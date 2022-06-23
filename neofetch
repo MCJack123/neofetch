@@ -1468,7 +1468,7 @@ get_uptime() {
         ;;
 
         Haiku|BeOS)
-            s=$(($(system_time) / 1000000))
+            which system_time && s=$(($(system_time) / 1000000)) # BeOS doesn't have system_time command by default (but it can be built with a few lines of C)
         ;;
     esac
 
