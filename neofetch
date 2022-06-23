@@ -924,6 +924,7 @@ get_os() {
     case $kernel_name in
         Darwin)   os=$darwin_name ;;
         SunOS)    os=Solaris ;;
+        BeOS)     os=BeOS ;;
         Haiku)    os=Haiku ;;
         MINIX)    os=MINIX ;;
         AIX)      os=AIX ;;
@@ -1170,6 +1171,10 @@ get_distro() {
             distro=${distro/\(*}
         ;;
 
+        BeOS)
+            distro=BeOS
+        ;;
+
         Haiku)
             distro=Haiku
         ;;
@@ -1193,7 +1198,7 @@ get_distro() {
 
     # Get OS architecture.
     case $os in
-        Solaris|AIX|Haiku|IRIX|FreeMiNT)
+        Solaris|AIX|Haiku|BeOS|IRIX|FreeMiNT)
             machine_arch=$(uname -p)
         ;;
 
@@ -1356,7 +1361,7 @@ get_title() {
 
 get_kernel() {
     # Since these OS are integrated systems, it's better to skip this function altogether
-    [[ $os =~ (AIX|IRIX) ]] && return
+    [[ $os =~ "(AIX|IRIX)" ]] && return
 
     # Haiku uses 'uname -v' and not - 'uname -r'.
     [[ $os == Haiku ]] && {
@@ -1377,7 +1382,7 @@ get_kernel() {
     esac
 
     # Hide kernel info if it's identical to the distro info.
-    [[ $os =~ (BSD|MINIX) && $distro == *"$kernel_name"* ]] &&
+    [[ $os =~ "(BSD|MINIX)" && $distro == *"$kernel_name"* ]] &&
         case $distro_shorthand in
             on|tiny) kernel=$kernel_version ;;
             *)       unset kernel ;;
@@ -1425,7 +1430,7 @@ get_uptime() {
             s=$((${d:-0}*86400 + ${h:-0}*3600 + ${t%%:*}*60 + ${t#*:}))
         ;;
 
-        Haiku)
+        Haiku|BeOS)
             s=$(($(system_time) / 1000000))
         ;;
     esac
@@ -2097,7 +2102,7 @@ get_cpu() {
 
             # Select the right temperature file.
             for temp_dir in /sys/class/hwmon/*; do
-                [[ "$(< "${temp_dir}/name")" =~ (coretemp|fam15h_power|k10temp) ]] && {
+                [[ "$(< "${temp_dir}/name")" =~ "(coretemp|fam15h_power|k10temp)" ]] && {
                     temp_dirs=("$temp_dir"/temp*_input)
                     temp_dir=${temp_dirs[0]}
                     break
@@ -2233,6 +2238,19 @@ get_cpu() {
             cores="$(sysinfo -cpu | grep -c -F 'CPU #')"
         ;;
 
+        "BeOS")
+            # Get CPU name.
+            cpu="$(sysinfo -cpu | awk -F 'revision' '{print $1}' | sed 's/^[^ ]*//')"
+            cpu="${cpu/@*}"
+
+            # Get CPU speed.
+            speed="$(sysinfo -cpu | awk -F 'running at ' '{print $2}' | sed 's/ .*$//')"
+            speed="${speed/MHz}"
+
+            # Get CPU cores.
+            cores="1"
+        ;;
+
         "AIX")
             # Get CPU name.
             cpu="$(lsattr -El proc0 -a type | awk '{printf $2}')"
@@ -2352,7 +2370,7 @@ get_cpu_usage() {
                     "Mac OS X"|"macOS") cores="$(sysctl -n hw.logicalcpu_max)" ;;
                     "BSD")              cores="$(sysctl -n hw.ncpu)" ;;
                     "Solaris")          cores="$(kstat -m cpu_info | grep -c -F "chip_id")" ;;
-                    "Haiku")            cores="$(sysinfo -cpu | grep -c -F 'CPU #')" ;;
+                    "Haiku"|"BeOS")     cores="$(sysinfo -cpu | grep -c -F 'CPU #')" ;;
                     "iPhone OS")        cores="${cpu/*\(}"; cores="${cores/\)*}" ;;
                     "IRIX")             cores="$(sysconf NPROC_ONLN)" ;;
                     "FreeMiNT")         cores="$(sysctl -n hw.ncpu)" ;;
@@ -2622,7 +2640,7 @@ get_memory() {
             mem_used="$((mem_total - mem_free))"
         ;;
 
-        "Haiku")
+        "Haiku"|"BeOS")
             mem_total="$(($(sysinfo -mem | awk -F '\\/ |)' '{print $2; exit}') / 1024 / 1024))"
             mem_used="$(sysinfo -mem | awk -F '\\/|)' '{print $2; exit}')"
             mem_used="$((${mem_used/max} / 1024 / 1024))"
@@ -3162,6 +3180,7 @@ get_term() {
     [[ "$TERM" == "tw52" || "$TERM" == "tw100" ]] && term="TosWin2"
     [[ "$SSH_CONNECTION" ]] && term="$SSH_TTY"
     [[ "$WT_SESSION" ]]     && term="Windows Terminal"
+    [[ "$os" == "BeOS" ]]   && term="BeOS Terminal"
 
     # Check $PPID for terminal emulator.
     while [[ -z "$term" ]]; do
@@ -3724,7 +3743,7 @@ get_local_ip() {
 get_public_ip() {
     if type -p dig >/dev/null; then
         public_ip="$(dig +time=1 +tries=1 +short myip.opendns.com @resolver1.opendns.com)"
-       [[ "$public_ip" =~ ^\; ]] && unset public_ip
+       [[ "$public_ip" =~ "^\;" ]] && unset public_ip
     fi
 
     if [[ -z "$public_ip" ]] && type -p drill >/dev/null; then
@@ -3871,7 +3890,7 @@ image_backend() {
 }
 
 print_ascii() {
-    if [[ -f "$image_source" && ! "$image_source" =~ (png|jpg|jpeg|jpe|svg|gif) ]]; then
+    if [[ -f "$image_source" && ! "$image_source" =~ "(png|jpg|jpeg|jpe|svg|gif)" ]]; then
         ascii_data="$(< "$image_source")"
     elif [[ "$image_source" == "ascii" || $image_source == auto ]]; then
         :
@@ -4650,7 +4669,7 @@ term_padding() {
             padding=${xrdb/*internalBorder:}
             padding=${padding/$'\n'*}
 
-            [[ $padding =~ ^[0-9]+$ ]] ||
+            [[ $padding =~ '^[0-9]+$' ]] ||
                 padding=
         ;;
     esac
@@ -5922,6 +5941,19 @@ ${c1}--------------------------------------
 --------------------------------------
 --------------------------------------
 --------------------------------------
+EOF
+        ;;
+
+        "BeOS"*)
+            set_colors 4 1
+            read -rd '' ascii_data <<'EOF'
+${c1}+++++++++++++++${c2}#%%%%%%%%%%%%%%%%%%%%
+${c1}++-:.==:=+++++++${c2}%%%%+++*++*%%*+*+#%%
+${c1}+++: ++..++=-=++${c2}#%%-#%%%%%#-%-%%%%%%
+${c1}+++: -::-= :-.:+*${c2}%*+%%%%%%%=#%*++#%%
+${c1}+++: ++= - =++++*${c2}%%-#%%%%%#-%%%%%-%%
+${c1}++=:.--:-+-:---+${c2}#%%%++++++*%%++*+*%%
+${c1}++++++++++++++++${c2}%%%%%%%%%%%%%%%%%%%%
 EOF
         ;;
 
